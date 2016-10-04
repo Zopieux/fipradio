@@ -12,7 +12,7 @@ http://www.fipradio.fr/player
 APP_NAME = "FIP radio"
 META_URL = 'http://www.fipradio.fr/livemeta/7'
 
-RADIO_URL = 'http://audio.scdn.arkena.com/11016/fip-midfi128.mp3'
+RADIO_URL = 'http://direct.fipradio.fr/live/fip-midfi.mp3'
 RADIO_PLAYER = ['mplayer', RADIO_URL]
 
 
