@@ -11,17 +11,42 @@ http://www.fipradio.fr/player
 
 APP_NAME = "FIP radio"
 META_URL = 'http://www.fipradio.fr/livemeta/7'
+ICON_NAME = 'applications-multimedia'
 
 RADIO_URL = 'http://direct.fipradio.fr/live/fip-midfi.mp3'
 RADIO_PLAYER = ['mplayer', RADIO_URL]
 
+notification = None
+
 
 def subprocess(cmd, **kwargs):
-    return asyncio.create_subprocess_exec(cmd[0], *cmd[1:],
-                                          stdin=asyncio.subprocess.DEVNULL,
-                                          stdout=asyncio.subprocess.DEVNULL,
-                                          stderr=asyncio.subprocess.DEVNULL,
-                                          **kwargs)
+    cmd, *args = cmd
+    kwargs = {
+        'stdin': asyncio.subprocess.DEVNULL,
+        'stdout': asyncio.subprocess.DEVNULL,
+        'stderr': asyncio.subprocess.DEVNULL,
+        **kwargs
+    }
+    return asyncio.create_subprocess_exec(cmd, *args, **kwargs)
+
+
+async def notify(body):
+    try:
+        import gi
+        gi.require_version('Notify', '0.7')
+        from gi.repository import Notify
+        global notification
+        if not notification:
+            Notify.init(APP_NAME)
+            notification = Notify.Notification.new("")
+            notification.props.app_name = APP_NAME
+            notification.props.summary = APP_NAME
+            notification.props.icon_name = ICON_NAME
+            notification.set_timeout(2000)
+        notification.props.body = body
+        notification.show()
+    except ImportError:
+        await subprocess(['notify-send', '-i', ICON_NAME, APP_NAME, body])
 
 
 async def run_player():
@@ -29,47 +54,30 @@ async def run_player():
 
 
 async def get_metadata():
-    client = aiohttp.client.ClientSession()
-    last_data = None
-
-    notification = Notify.Notification.new("")
-    notification.props.app_name = APP_NAME
-    notification.props.summary = APP_NAME
-    notification.props.icon_name = "applications-multimedia"
-    notification.set_timeout(2000)
-
     while True:
         try:
-            data = await (await client.get(META_URL)).json()
+            data = await (await aiohttp.client.get(META_URL)).json()
             level = data['levels'][-1]
             uid = level['items'][level['position']]
-            data = data['steps'][uid]
+            return data['steps'][uid]
         except Exception:
-            time.sleep(2)
-            continue
-
-        for field in ('title', 'authors', 'anneeEditionMusique'):
-            data[field] = data.get(field, '?')
-
-        if data != last_data:
-            msg = "{title} — {authors} ({anneeEditionMusique})".format(**data)
-            notification.props.body = msg
-            notification.show()
-
-        last_data = data
-        await asyncio.sleep(10)
+            time.sleep(.1)
 
 
-if __name__ == '__main__':
-    import gi
-
-    gi.require_version('Notify', '0.7')
-    from gi.repository import Notify
-
-    Notify.init(APP_NAME)
-
-    metadata = get_metadata()
-    player = run_player()
-
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(asyncio.gather(metadata, player))
+async def music_toggle(enable):
+    sub = await subprocess(['pacmd', 'list-sink-inputs'], stdout=asyncio.subprocess.PIPE)
+    index = None
+    is_enabled = False
+    async for line in sub.stdout:
+        line = line.strip()
+        if line.startswith(b'index: '):
+            index = line.rsplit(b' ', 1)[-1]
+        if line.startswith(b'muted:'):
+            is_enabled = line.endswith(b'no')
+        if index is not None and line.startswith(b'application.name') and line.endswith(b'"mplayer2"'):
+            break
+    else:
+        return
+    if is_enabled == enable:
+        return
+    await subprocess(['pacmd', 'set-sink-input-mute', index, '0' if enable else '1'])
