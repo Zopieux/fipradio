@@ -3,15 +3,16 @@
 import asyncio
 import dbm
 import os
+import pathlib
 import shelve
 import signal
 from collections import namedtuple
 
 from fipradio import run_player, get_metadata, music_toggle
 
-APP_DIR = os.path.expanduser('~/.local/share/fipradio')
-SHELVE_PATH = os.path.expanduser('~/.local/share/fipradio/blacklist')
-PID_PATH = os.path.expanduser('~/.local/share/fipradio/daemon.pid')
+APP_DIR = pathlib.Path.home() / '.local' / 'share' / 'fipradio'
+SHELVE_PATH = APP_DIR / 'blacklist'
+PID_PATH = APP_DIR / 'pid'
 
 Attribute = namedtuple('Attribute', 'code fip_code name format')
 
@@ -63,8 +64,13 @@ async def muter():
         return True
 
     while True:
-        with shelve.open(SHELVE_PATH, 'r') as db:
-            bl = db.get('blacklist', set())
+        try:
+            with shelve.open(str(SHELVE_PATH), 'r') as db:
+                bl = db.get('blacklist', set())
+        except FileNotFoundError:
+            await music_toggle(True)
+            await asyncio.sleep(2)
+            continue
         metadata = await get_metadata()
         enable = True
         for items in bl:
@@ -78,14 +84,15 @@ async def muter():
 def start(parser, args):
     stop(parser, args)
     create_daemon()
-    with open(PID_PATH, 'w') as pid:
+    with PID_PATH.open('w') as pid:
         pid.write(repr(os.getpgrp()))
-    asyncio.get_event_loop().run_until_complete(asyncio.gather(muter(), run_player()))
+    asyncio.gather(muter(), run_player())
+    asyncio.get_event_loop().run_forever()
 
 
 def stop(parser, args):
     try:
-        with open(PID_PATH) as pid:
+        with PID_PATH.open() as pid:
             pid = int(pid.read())
         os.killpg(pid, signal.SIGTERM)
         return 0
@@ -95,7 +102,7 @@ def stop(parser, args):
         return 1
     finally:
         try:
-            os.remove(PID_PATH)
+            PID_PATH.unlink()
         except OSError:
             pass
 
@@ -106,7 +113,8 @@ def _format_metadata(metadata, attrs=None, getter='fip_code'):
     return "\n".join("{name:>{align}}: {value}"
                      .format(name=attr.name,
                              align=ATTRIBUTES_LENGTH + 1,
-                             value=attr.format(metadata.get(getattr(attr, getter))))
+                             value=attr.format(
+                                 metadata.get(getattr(attr, getter))))
                      for attr in attrs)
 
 
@@ -127,7 +135,7 @@ def bl(parser, args):
         if input("Blacklist that? ").lower() in ("y", "yes"):
             key = tuple((attr.code, attr.format(metadata.get(attr.fip_code)))
                         for attr in attrs)
-            with shelve.open(SHELVE_PATH) as db:
+            with shelve.open(str(SHELVE_PATH)) as db:
                 bl = db.get('blacklist', set())
                 if key in bl:
                     print("Already blacklisted")
@@ -140,7 +148,7 @@ def bl(parser, args):
             return 1
     elif args.bl == 'del':
         try:
-            with shelve.open(SHELVE_PATH, 'r') as db:
+            with shelve.open(str(SHELVE_PATH), 'r') as db:
                 bl = sorted(db.get('blacklist', set()))
         except dbm.error:
             return
@@ -149,13 +157,13 @@ def bl(parser, args):
         metadata = dict(item)
         print("Un-blacklisting:")
         print(_format_metadata(metadata, attrs, getter='code'))
-        with shelve.open(SHELVE_PATH) as db:
+        with shelve.open(str(SHELVE_PATH)) as db:
             bl = db.get('blacklist', set())
             bl.remove(item)
             db['blacklist'] = bl
     elif args.bl == 'show':
         try:
-            with shelve.open(SHELVE_PATH, 'r') as db:
+            with shelve.open(str(SHELVE_PATH), 'r') as db:
                 bl = sorted(db.get('blacklist', set()))
         except dbm.error:
             return
@@ -168,7 +176,7 @@ def bl(parser, args):
             print()
     elif args.bl == 'clear':
         try:
-            with shelve.open(SHELVE_PATH) as db:
+            with shelve.open(str(SHELVE_PATH)) as db:
                 db['blacklist'] = set()
         except dbm.error:
             return
@@ -189,7 +197,8 @@ if __name__ == '__main__':
     blp = sub.add_parser('bl')
     blps = blp.add_subparsers(dest='bl')
     blps.add_parser('show')
-    blps.add_parser('add').add_argument('type', nargs=argparse.REMAINDER, choices=attrs)
+    blps.add_parser('add').add_argument('type', nargs=argparse.REMAINDER,
+                                        choices=attrs)
     blps.add_parser('del').add_argument('n', type=int)
     blps.add_parser('clear')
 
@@ -197,5 +206,5 @@ if __name__ == '__main__':
     if not args.cmd:
         parser.error("no command provided")
 
-    os.makedirs(APP_DIR, exist_ok=True)
+    APP_DIR.mkdir(exist_ok=True)
     locals()[args.cmd](parser, args)

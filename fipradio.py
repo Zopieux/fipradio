@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
-import asyncio
 import aiohttp.client
+import asyncio
 import time
 
 """
@@ -14,7 +14,8 @@ META_URL = 'http://www.fipradio.fr/livemeta/7'
 ICON_NAME = 'applications-multimedia'
 
 RADIO_URL = 'http://direct.fipradio.fr/live/fip-midfi.mp3'
-RADIO_PLAYER = ['mplayer', RADIO_URL]
+PLAYER_BINARY = 'mplayer'
+RADIO_PLAYER = [PLAYER_BINARY, RADIO_URL]
 
 notification = None
 
@@ -65,7 +66,15 @@ async def get_metadata():
 
 
 async def music_toggle(enable):
-    sub = await subprocess(['pacmd', 'list-sink-inputs'], stdout=asyncio.subprocess.PIPE)
+    def is_player(line):
+        player = PLAYER_BINARY.encode()
+        return ((line.startswith(b'application.name') and
+                 b'[%s]' % player in line) or
+                (line.startswith(b'application.process.binary') and
+                 line.endswith(b'"%s"' % player)))
+
+    sub = await subprocess(['pacmd', 'list-sink-inputs'],
+                           stdout=asyncio.subprocess.PIPE)
     index = None
     is_enabled = False
     async for line in sub.stdout:
@@ -74,10 +83,11 @@ async def music_toggle(enable):
             index = line.rsplit(b' ', 1)[-1]
         if line.startswith(b'muted:'):
             is_enabled = line.endswith(b'no')
-        if index is not None and line.startswith(b'application.name') and line.endswith(b'"mplayer2"'):
+        if index is not None and is_player(line):
             break
     else:
         return
     if is_enabled == enable:
         return
-    await subprocess(['pacmd', 'set-sink-input-mute', index, '0' if enable else '1'])
+    await subprocess(['pacmd', 'set-sink-input-mute', index,
+                      '0' if enable else '1'])
