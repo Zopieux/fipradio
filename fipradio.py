@@ -1,6 +1,7 @@
 import aiohttp.client
 import asyncio
 import time
+import warnings
 
 APP_NAME = "FIP radio"
 META_URL = 'http://www.fipradio.fr/livemeta/7'
@@ -31,13 +32,15 @@ async def get_metadata():
         headers={'User-Agent': 'Mozilla/5.0 (fipradio.py)'})
     while True:
         try:
-            data = await (await session.get(META_URL)).json()
+            with warnings.catch_warnings():
+                warnings.simplefilter("error")
+                data = await (await session.get(META_URL)).json()
             level = data['levels'][-1]
             uid = level['items'][level['position']]
             session.close()
             return data['steps'][uid]
         except Exception:
-            time.sleep(.1)
+            time.sleep(.5)
 
 
 async def music_toggle(enable):
