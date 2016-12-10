@@ -81,8 +81,8 @@ async def muter():
         await asyncio.sleep(2)
 
 
-def start(parser, args):
-    stop(parser, args)
+def start(args):
+    stop(args)
     create_daemon()
     with PID_PATH.open('w') as pid:
         pid.write(repr(os.getpgrp()))
@@ -90,7 +90,7 @@ def start(parser, args):
     asyncio.get_event_loop().run_forever()
 
 
-def stop(parser, args):
+def stop(args):
     try:
         with PID_PATH.open() as pid:
             pid = int(pid.read())
@@ -118,14 +118,14 @@ def _format_metadata(metadata, attrs=None, getter='fip_code'):
                      for attr in attrs)
 
 
-def what(parser, args):
+def what(args):
     attrs = [ATTRIBUTES_DICT[code] for code in args.type] or None
     metadata = asyncio.get_event_loop().run_until_complete(get_metadata())
     print(_format_metadata(metadata, attrs))
     return 0
 
 
-def bl(parser, args):
+def bl(args):
     if args.bl == 'add':
         metadata = asyncio.get_event_loop().run_until_complete(get_metadata())
         attrs = [attr for attr in ATTRIBUTES if attr.code in args.type]
@@ -207,4 +207,4 @@ if __name__ == '__main__':
         parser.error("no command provided")
 
     APP_DIR.mkdir(exist_ok=True)
-    locals()[args.cmd](parser, args)
+    locals()[args.cmd](args)

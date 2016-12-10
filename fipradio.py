@@ -1,13 +1,6 @@
-#!/usr/bin/env python
-
 import aiohttp.client
 import asyncio
 import time
-
-"""
-Plays & notifies the currently playing media at FIP radio:
-http://www.fipradio.fr/player
-"""
 
 APP_NAME = "FIP radio"
 META_URL = 'http://www.fipradio.fr/livemeta/7'
@@ -16,8 +9,6 @@ ICON_NAME = 'applications-multimedia'
 RADIO_URL = 'http://direct.fipradio.fr/live/fip-midfi.mp3'
 PLAYER_BINARY = 'mplayer'
 RADIO_PLAYER = [PLAYER_BINARY, RADIO_URL]
-
-notification = None
 
 
 def subprocess(cmd, **kwargs):
@@ -31,35 +22,19 @@ def subprocess(cmd, **kwargs):
     return asyncio.create_subprocess_exec(cmd, *args, **kwargs)
 
 
-async def notify(body):
-    try:
-        import gi
-        gi.require_version('Notify', '0.7')
-        from gi.repository import Notify
-        global notification
-        if not notification:
-            Notify.init(APP_NAME)
-            notification = Notify.Notification.new("")
-            notification.props.app_name = APP_NAME
-            notification.props.summary = APP_NAME
-            notification.props.icon_name = ICON_NAME
-            notification.set_timeout(2000)
-        notification.props.body = body
-        notification.show()
-    except ImportError:
-        await subprocess(['notify-send', '-i', ICON_NAME, APP_NAME, body])
-
-
 async def run_player():
     await (await subprocess(RADIO_PLAYER)).wait()
 
 
 async def get_metadata():
+    session = aiohttp.client.ClientSession(
+        headers={'User-Agent': 'Mozilla/5.0 (fipradio.py)'})
     while True:
         try:
-            data = await (await aiohttp.client.get(META_URL)).json()
+            data = await (await session.get(META_URL)).json()
             level = data['levels'][-1]
             uid = level['items'][level['position']]
+            session.close()
             return data['steps'][uid]
         except Exception:
             time.sleep(.1)
