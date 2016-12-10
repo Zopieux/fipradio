@@ -3,8 +3,8 @@ from setuptools import setup
 setup(name="fipradio",
       version="1.0",
       author="Alexandre Macabies",
-      description="Command line to start & stop the stream and mute unwanted "
-                  "songs from FIP radio",
+      description="Command line tool to start & stop the stream and mute "
+                  "unwanted songs from FIP radio",
       url="https://github.com/zopieux/fipradio",
       license="MIT",
       classifiers=["Topic :: Multimedia :: Sound/Audio :: Players",
