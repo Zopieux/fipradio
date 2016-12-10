@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(name="fipradio",
-      version="1.0",
+      version="1.1",
       author="Alexandre Macabies",
       description="Command line tool to start & stop the stream and mute "
                   "unwanted songs from FIP radio",
